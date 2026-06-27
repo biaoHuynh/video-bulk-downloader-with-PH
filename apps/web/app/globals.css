@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0e14;
+  --color-surface: #131823;
+  --color-surface-2: #1b2230;
+  --color-border: #273044;
+  --color-accent: #6366f1;
+  --color-accent-fg: #ffffff;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: var(--color-bg);
+  color: #e6e9ef;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  /* Denser baseline: 13px so the app reads like a tool, not a marketing page. */
+  font-size: 13px;
+  line-height: 1.45;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+/* Compact native controls to match the dense layout. */
+input,
+select,
+button {
+  font-size: 13px;
+}
+
+/* Thin custom scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}

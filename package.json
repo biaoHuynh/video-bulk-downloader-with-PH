@@ -1,0 +1,24 @@
+{
+  "name": "video-bulk-downloader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bulk-download videos from a TikTok/Douyin/Bilibili/YouTube channel or single-video URL.",
+  "scripts": {
+    "setup": "node scripts/fetch-binaries.mjs",
+    "dev": "pnpm --parallel --filter @vbd/server --filter @vbd/web dev",
+    "dev:server": "pnpm --filter @vbd/server dev",
+    "dev:web": "pnpm --filter @vbd/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  }
+}
