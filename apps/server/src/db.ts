@@ -75,4 +75,7 @@ export function initDb(): void {
     `UPDATE videos SET download_status = 'error', error = 'Interrupted (server restarted)', updated_at = ?
      WHERE download_status IN ('downloading', 'queued')`,
   ).run(new Date().toISOString());
+  // Likewise, a scan that was still enumerating when we shut down is dead now —
+  // its in-memory handle is gone, so unstick it (keeping any videos it had found).
+  db.prepare(`UPDATE scans SET status = 'canceled' WHERE status = 'scanning'`).run();
 }

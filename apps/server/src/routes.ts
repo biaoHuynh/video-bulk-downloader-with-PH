@@ -15,7 +15,7 @@ import {
   formatRemaining,
 } from "./ratelimit.js";
 import { jobs, scans, videos } from "./repo.js";
-import { startScan } from "./scanner.js";
+import { cancelScan, startScan } from "./scanner.js";
 import { cancelDownload, cancelScanDownloads, enqueueDownload } from "./queue.js";
 import { bus } from "./events.js";
 import { pickFolder } from "./system.js";
@@ -120,6 +120,21 @@ export function registerRoutes(app: FastifyInstance): void {
   app.get("/api/jobs/:id/scans", async (req) => {
     const { id } = req.params as { id: string };
     return scans.listByJob(id);
+  });
+
+  // Abort an in-flight scan/enumeration (keeps any videos already found).
+  app.post("/api/scans/:scanId/abort", async (req, reply) => {
+    const { scanId } = req.params as { scanId: string };
+    const stopped = cancelScan(scanId);
+    return reply.code(202).send({ stopped });
+  });
+
+  // Delete a scan (and its videos). Stops it first if still enumerating.
+  app.delete("/api/scans/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    cancelScan(id);
+    scans.remove(id);
+    return reply.code(204).send();
   });
 
   app.get("/api/scans/:id", async (req, reply) => {

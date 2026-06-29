@@ -4,7 +4,8 @@ import PQueue from "p-queue";
 import { platformLabel, type Platform } from "@vbd/shared";
 import { jobs, videos } from "./repo.js";
 import { bus } from "./events.js";
-import { download, type DownloadHandle } from "./ytdlp.js";
+import type { DownloadHandle } from "./ytdlp.js";
+import { downloadEngineFor } from "./engines/registry.js";
 import { humanizeYtDlpError } from "./yterrors.js";
 import {
   cooldownRemainingMs,
@@ -143,7 +144,7 @@ async function runDownload(videoId: string): Promise<void> {
   }
 
   let lastPct = -1;
-  const handle = download(
+  const handle = downloadEngineFor(video.platform)(
     {
       webpageUrl: video.webpageUrl,
       folder,

@@ -6,8 +6,10 @@ import { Ban, Clock, Download, FolderOpen, Loader2, Search } from "lucide-react"
 import type { DownloadStatus, Scan, ServerEvent, Video } from "@vbd/shared";
 import { platformLabel } from "@vbd/shared";
 import {
+  abortScan,
   cancelDownload,
   cancelScan,
+  deleteScan,
   getCooldowns,
   getScan,
   getWorkspace,
@@ -95,6 +97,8 @@ export default function WorkspacePage() {
   }, [scanQuery.data, activeScanId]);
 
   function selectScan(scanId: string, live: string | null = liveScanId) {
+    // Already viewing this scan → keep its list; re-clicking shouldn't unload it.
+    if (scanId === activeScanRef.current) return;
     activeScanRef.current = scanId;
     setActiveScanId(scanId);
     if (scanId !== live) setVideos([]);
@@ -162,19 +166,56 @@ export default function WorkspacePage() {
   }, [liveScanId, qc]);
 
   /* -------------------------------- actions -------------------------------- */
+  // Switch the view to a freshly-started scan (shared by Scan + Re-scan) so the
+  // loading state shows instantly, even before the first SSE frame arrives.
+  function applyNewScan(scanRow: Scan) {
+    activeScanRef.current = scanRow.id;
+    setActiveScanId(scanRow.id);
+    setLiveScanId(scanRow.id);
+    setVideos([]);
+    setSelected(new Set());
+    setScanFound(0);
+    qc.invalidateQueries({ queryKey: ["workspace"] });
+  }
+
   const scan = useMutation({
     mutationFn: () => scanJob(jobId as string, url.trim(), limit ? Number(limit) : undefined),
     onSuccess: (scanRow) => {
-      // Optimistically switch to the new scan so loading shows instantly,
-      // even before the first SSE frame arrives.
       setUrl("");
-      activeScanRef.current = scanRow.id;
-      setActiveScanId(scanRow.id);
-      setLiveScanId(scanRow.id);
-      setVideos([]);
-      setSelected(new Set());
-      setScanFound(0);
+      applyNewScan(scanRow);
+    },
+  });
+
+  // Re-run a past scan's URL (from a History card).
+  const rescan = useMutation({
+    mutationFn: (s: Scan) => scanJob(jobId as string, s.sourceUrl, limit ? Number(limit) : undefined),
+    onSuccess: (scanRow) => applyNewScan(scanRow),
+  });
+
+  // Delete a past scan (and its videos).
+  const del = useMutation({
+    mutationFn: (scanId: string) => deleteScan(scanId),
+    onSuccess: (_d, scanId) => {
+      if (scanId === liveScanId) setLiveScanId(null);
+      if (scanId === activeScanRef.current) {
+        // Cleared the active scan → drop the view; the auto-select effect picks
+        // the next remaining scan after the workspace refetches.
+        activeScanRef.current = null;
+        setActiveScanId(null);
+        setVideos([]);
+        setSelected(new Set());
+      }
       qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
+  });
+
+  const abort = useMutation({
+    mutationFn: () => abortScan(activeScanId as string),
+    onSuccess: () => {
+      // Resolve the scanning state immediately; the scan:done SSE/poll follows.
+      setLiveScanId(null);
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+      if (activeScanId) qc.invalidateQueries({ queryKey: ["scan", activeScanId] });
     },
   });
 
@@ -296,6 +337,17 @@ export default function WorkspacePage() {
               )}
               Scan
             </button>
+            {isScanning && (
+              <button
+                type="button"
+                onClick={() => activeScanId && abort.mutate()}
+                disabled={abort.isPending}
+                title="Stop scanning (keeps videos found so far)"
+                className="inline-flex items-center gap-1.5 rounded-md bg-red-600/90 px-4 py-2 font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                <Ban size={15} /> Stop
+              </button>
+            )}
           </form>
 
           {/* settings strip */}
@@ -453,7 +505,7 @@ export default function WorkspacePage() {
                 {isScanning && (
                   <div className="mb-2 flex items-center gap-2 rounded-md bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300">
                     <Loader2 size={13} className="animate-spin" /> Scanning… {scanFound} found
-                    (you can already select &amp; download)
+                    (you can already select &amp; download, or press Stop)
                   </div>
                 )}
                 <VideoList
@@ -482,6 +534,10 @@ export default function WorkspacePage() {
             activeScanId={activeScanId}
             liveScanId={liveScanId}
             onSelect={(id) => selectScan(id)}
+            onRescan={(s) => rescan.mutate(s)}
+            onDelete={(id) => del.mutate(id)}
+            rescanningId={rescan.isPending ? (rescan.variables as Scan).id : null}
+            deletingId={del.isPending ? (del.variables as string) : null}
           />
         </aside>
       </div>

@@ -40,7 +40,5 @@ export async function startServer(): Promise<FastifyInstance> {
 }
 
 // Surface what the Electron main process needs (it imports @vbd/server).
-export { setDouyinEnumerator } from "./native.js";
 export { PORT, HOST } from "./config.js";
 export type { ScanEntry, ScanHandle, CookieConfig } from "./ytdlp.js";
-export type { ChannelEnumerator } from "./native.js";

@@ -14,30 +14,54 @@ videos.
 | -------- | -------------------------------------------------------------- |
 | Frontend | Next.js (App Router) + Tailwind v4 + TanStack Query            |
 | Backend  | Node.js + Fastify (TypeScript), SQLite (`better-sqlite3`)       |
-| Engine   | `yt-dlp` (standalone binary) + `ffmpeg` for merging            |
+| Engines  | per-platform, best-of-breed (see below) + `ffmpeg` for merging |
 | Realtime | Server-Sent Events (scan results + download progress stream in) |
+
+### Per-platform engines
+
+Instead of forcing every site through one tool, the scanner/queue pick the best engine per
+platform via `apps/server/src/engines/registry.ts` (each engine shares the same
+`ScanHandle`/`DownloadHandle` contract, and the registry **falls back to yt-dlp** whenever a
+specialised binary is missing — so a plain `pnpm setup` install still works):
+
+| Platform   | List (scan)                | Download                    |
+| ---------- | -------------------------- | --------------------------- |
+| YouTube    | `yt-dlp`                   | `yt-dlp`                    |
+| TikTok     | `yt-dlp`                   | `yt-dlp`                    |
+| Douyin     | `f2` (`bin/f2.exe`)        | `f2`                        |
+| Bilibili   | web API (`bilibili.ts`)    | `BBDown` (`bin/BBDown.exe`) |
+
+- **`f2`** ([Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2)) signs Douyin requests
+  properly (a_bogus) — yt-dlp's Douyin extractor is unreliable. Shipped as a PyInstaller exe
+  built from our wrapper (`scripts/f2_wrapper/vbd_f2.py`). **TikTok stays on yt-dlp** (its
+  TikTok extractor works well; f2's TikTok path needs a real msToken that TikTok rejects).
+- **`BBDown`** ([nilaoda/BBDown](https://github.com/nilaoda/BBDown)) is the best Bilibili
+  downloader: 1080p without login (WBI), proper codec selection, no 412 grief.
 
 Monorepo (pnpm workspaces):
 
 ```
 apps/web        Next.js UI
-apps/server     Fastify API + yt-dlp orchestration + download queue
+apps/server     Fastify API + per-platform engines (src/engines/) + download queue
 packages/shared Shared TS types + URL/platform detection
-bin/            yt-dlp.exe, ffmpeg.exe, ffprobe.exe (fetched by `pnpm setup`)
+bin/            yt-dlp.exe, ffmpeg.exe, ffprobe.exe, BBDown.exe (pnpm setup); f2.exe (pnpm build:f2)
 data/           SQLite db + default downloads dir
-scripts/        fetch-binaries.mjs
+scripts/        fetch-binaries.mjs, build-f2.mjs, f2_wrapper/vbd_f2.py
 ```
 
 ## Prerequisites
 
 - Node.js ≥ 20 (tested on 22)
 - pnpm ≥ 10
+- **Python ≥ 3.10** — only if you want the Douyin/TikTok engine (`pnpm build:f2`). Without it,
+  those platforms fall back to yt-dlp (which currently fails on Douyin).
 
 ## Setup
 
 ```bash
 pnpm install        # install workspace deps (better-sqlite3 uses a prebuilt binary)
-pnpm setup          # download yt-dlp + ffmpeg into ./bin  (Windows: also unzips ffmpeg)
+pnpm setup          # download yt-dlp + ffmpeg + BBDown into ./bin  (Windows)
+pnpm build:f2       # OPTIONAL: build bin/f2.exe (Douyin/TikTok engine) — needs Python ≥ 3.10
 ```
 
 ## Run (development)
@@ -88,8 +112,9 @@ Single-page workspace — no navigation:
 The app wraps the UI + server in Electron (one process: Fastify serves the Next static
 export + API; a window loads it). The big win: an **embedded login** (Sign in) reads
 cookies from the app's own browser session, so Bilibili/Douyin/TikTok logins work without
-the Chrome cookie-DB-lock problems. Douyin channels are listed via a hidden window that
-intercepts Douyin's own API.
+the Chrome cookie-DB-lock problems. The ✓ next to a platform appears only when a real
+logged-in session cookie was captured (e.g. Douyin `sessionid`) — anonymous cookies don't
+count. Douyin/TikTok listing + download then go through the `f2` engine using those cookies.
 
 ```bash
 pnpm setup            # ensure bin/ has yt-dlp + ffmpeg

@@ -11,7 +11,7 @@ export const PLATFORMS: Platform[] = [
 /** What kind of thing a submitted URL points at. */
 export type SourceType = "channel" | "playlist" | "video";
 
-export type ScanStatus = "scanning" | "done" | "error";
+export type ScanStatus = "scanning" | "done" | "error" | "canceled";
 
 export type DownloadStatus =
   | "idle"

@@ -69,6 +69,8 @@ export const getScan = (scanId: string) =>
   req<{ scan: Scan; videos: Video[] }>(`/api/scans/${scanId}`);
 export const listScans = (jobId: string) =>
   req<Scan[]>(`/api/jobs/${jobId}/scans`);
+export const deleteScan = (scanId: string) =>
+  req<void>(`/api/scans/${scanId}`, { method: "DELETE" });
 
 /* downloads */
 export const startDownload = (jobId: string, videoIds: string[], folder: string) =>
@@ -80,6 +82,9 @@ export const cancelDownload = (videoId: string) =>
   req<{ ok: boolean }>(`/api/downloads/${videoId}/cancel`, { method: "POST" });
 export const cancelScan = (scanId: string) =>
   req<{ canceled: number }>(`/api/scans/${scanId}/cancel`, { method: "POST" });
+/** Abort an in-flight enumeration (keeps partial results). */
+export const abortScan = (scanId: string) =>
+  req<{ stopped: boolean }>(`/api/scans/${scanId}/abort`, { method: "POST" });
 export const retryDownload = (videoId: string) =>
   req<{ ok: boolean }>(`/api/downloads/${videoId}/retry`, { method: "POST" });
 

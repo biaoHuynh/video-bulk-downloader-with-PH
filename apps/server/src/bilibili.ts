@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,52 @@ const PAGE_SLEEP_MS = 1200; // gentle pacing between pages
 const SAFETY_MAX = 5000; // cap when no explicit limit
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/* ------------------------------ WBI signing -------------------------------- */
+// Bilibili's `x/space/arc/search` now requires WBI-signed params (wts + w_rid).
+// Unsigned requests trip risk-control (-412/-799) after the first page — this is
+// the real reason a channel scan dies at ~30 videos, not raw request rate.
+
+// Fixed permutation table Bilibili uses to derive the 32-char mixin key.
+const MIXIN_KEY_TAB = [
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
+  28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
+  54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+];
+
+let wbiKeys: { imgKey: string; subKey: string; at: number } | null = null;
+
+/** Fetch (and cache ~6h) the WBI img/sub keys from the nav endpoint. */
+async function getWbiKeys(cookieHeader: string): Promise<{ imgKey: string; subKey: string }> {
+  if (wbiKeys && Date.now() - wbiKeys.at < 6 * 3600_000) return wbiKeys;
+  const headers: Record<string, string> = { "User-Agent": UA, Referer: "https://www.bilibili.com/" };
+  if (cookieHeader) headers.Cookie = cookieHeader;
+  const r = await fetch("https://api.bilibili.com/x/web-interface/nav", { headers });
+  const j: any = await r.json();
+  const base = (u: string) => u.split("/").pop()?.split(".")[0] ?? "";
+  const imgKey = base(j?.data?.wbi_img?.img_url ?? "");
+  const subKey = base(j?.data?.wbi_img?.sub_url ?? "");
+  if (!imgKey || !subKey) throw new Error("Could not fetch Bilibili WBI keys");
+  wbiKeys = { imgKey, subKey, at: Date.now() };
+  return wbiKeys;
+}
+
+function mixinKey(imgKey: string, subKey: string): string {
+  const s = imgKey + subKey;
+  return MIXIN_KEY_TAB.map((i) => s[i] ?? "").join("").slice(0, 32);
+}
+
+/** Sign params: add `wts`, sort, md5(query+mixinKey) → `w_rid`. Returns a query string. */
+function encWbi(params: Record<string, string | number>, imgKey: string, subKey: string): string {
+  const mk = mixinKey(imgKey, subKey);
+  const signed: Record<string, string | number> = { ...params, wts: Math.floor(Date.now() / 1000) };
+  const query = Object.keys(signed)
+    .sort()
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(String(signed[k]).replace(/[!'()*]/g, ""))}`)
+    .join("&");
+  const wRid = crypto.createHash("md5").update(query + mk).digest("hex");
+  return `${query}&w_rid=${wRid}`;
+}
 
 /** Returns the user mid if `url` is a Bilibili space (channel) URL, else null. */
 export function isBilibiliSpace(rawUrl: string): string | null {
@@ -105,7 +152,7 @@ async function cookiesFromBrowser(
 }
 
 /** Build a Cookie header: a freshly-primed buvid3 plus any login cookies the job provides. */
-async function buildCookieHeader(
+export async function buildCookieHeader(
   cookies: CookieConfig,
 ): Promise<{ header: string; hasLogin: boolean }> {
   const parts: string[] = [];
@@ -167,6 +214,17 @@ export function enumerateBilibiliSpace(
     };
     if (cookieHeader) headers.Cookie = cookieHeader;
 
+    // Sign requests (WBI) so every page looks legitimate — without this the API
+    // trips risk-control right after page 1, which is the "blocked at 30 videos" bug.
+    // Best-effort: if the keys can't be fetched, fall back to unsigned (no worse
+    // than before) rather than failing the whole scan.
+    let wbi: { imgKey: string; subKey: string } | null = null;
+    try {
+      wbi = await getWbiKeys(cookieHeader);
+    } catch {
+      /* proceed unsigned */
+    }
+
     // When Bilibili blocks us, the right advice depends on whether we sent a login.
     const blocked = (detail: string): Error =>
       hasLogin
@@ -188,8 +246,10 @@ export function enumerateBilibiliSpace(
     let total = Infinity;
 
     while (!canceled && index < total && index < max) {
-      const url =
-        `https://api.bilibili.com/x/space/arc/search?mid=${mid}&ps=${PAGE_SIZE}&pn=${pn}&order=pubdate`;
+      const q = wbi
+        ? encWbi({ mid, ps: PAGE_SIZE, pn, order: "pubdate" }, wbi.imgKey, wbi.subKey)
+        : `mid=${mid}&ps=${PAGE_SIZE}&pn=${pn}&order=pubdate`;
+      const url = `https://api.bilibili.com/x/space/arc/search?${q}`;
       const res = await fetch(url, { headers, signal: controller.signal });
       const ct = res.headers.get("content-type") ?? "";
       if (!ct.includes("json")) {

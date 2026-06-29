@@ -87,16 +87,70 @@ async function fetchFfmpegWindows() {
   console.log("✓ ffmpeg.exe, ffprobe.exe");
 }
 
+/** Recursively find the first file named `name` under `dir`. */
+async function findFile(dir, name) {
+  for (const ent of await fs.readdir(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      const hit = await findFile(p, name);
+      if (hit) return hit;
+    } else if (ent.name.toLowerCase() === name.toLowerCase()) {
+      return p;
+    }
+  }
+  return null;
+}
+
+// Bilibili download engine: nilaoda/BBDown self-contained win-x64 single exe.
+// The release asset is version-stamped, so resolve it via the GitHub API.
+async function fetchBBDownWindows() {
+  const out = path.join(BIN, "BBDown.exe");
+  if (!FORCE && (await exists(out))) {
+    console.log("• BBDown already present (use --force to re-download)");
+    return;
+  }
+  console.log("↓ resolving BBDown latest release…");
+  const rel = await fetch("https://api.github.com/repos/nilaoda/BBDown/releases/latest", {
+    headers: { "User-Agent": "vbd-fetch", Accept: "application/vnd.github+json" },
+  });
+  if (!rel.ok) throw new Error(`GitHub API HTTP ${rel.status}`);
+  const json = await rel.json();
+  const asset = (json.assets || []).find((a) => /win-x64\.zip$/i.test(a.name));
+  if (!asset) throw new Error("No win-x64 asset in latest BBDown release");
+
+  const tmp = path.join(BIN, "_bbdown_tmp");
+  const zip = path.join(BIN, "_bbdown.zip");
+  await download(asset.browser_download_url, zip);
+  await fs.rm(tmp, { recursive: true, force: true });
+  console.log("⧉ extracting BBDown…");
+  const r = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-Command", `Expand-Archive -Path '${zip}' -DestinationPath '${tmp}' -Force`],
+    { stdio: "inherit" },
+  );
+  if (r.status !== 0) throw new Error("Expand-Archive failed");
+  const exe = await findFile(tmp, "BBDown.exe");
+  if (!exe) throw new Error("BBDown.exe not found in archive");
+  await fs.copyFile(exe, out);
+  await fs.rm(tmp, { recursive: true, force: true });
+  await fs.rm(zip, { force: true });
+  console.log("✓ BBDown.exe");
+}
+
 async function main() {
   await fs.mkdir(BIN, { recursive: true });
   await fetchYtDlp();
   if (isWin) {
     await fetchFfmpegWindows();
+    await fetchBBDownWindows();
   } else {
     console.log(
       "• Non-Windows: install ffmpeg via your package manager (brew install ffmpeg / apt install ffmpeg).",
     );
   }
+  console.log(
+    "\n• Douyin/TikTok engine (bin/f2.exe) is built separately: `pnpm build:f2` (needs Python 3.10+).",
+  );
   console.log(`\nDone. Binaries in ${BIN}`);
 }
 

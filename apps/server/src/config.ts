@@ -61,6 +61,10 @@ export const FFMPEG_PATH = path.join(BIN_DIR, exe("ffmpeg"));
 /** Passed to yt-dlp as --ffmpeg-location (a directory). */
 export const FFMPEG_DIR = BIN_DIR;
 
+/** Per-platform "best" engines (optional). Absent → registry falls back to yt-dlp. */
+export const F2_PATH = path.join(BIN_DIR, exe("f2"));
+export const BBDOWN_PATH = path.join(BIN_DIR, exe("BBDown"));
+
 export const PORT = Number(process.env.VBD_PORT ?? process.env.PORT ?? 4319);
 export const HOST = process.env.VBD_HOST ?? "127.0.0.1";
 
@@ -74,6 +78,14 @@ export function ensureDirs(): void {
 
 export function ytdlpExists(): boolean {
   return fs.existsSync(YTDLP_PATH);
+}
+
+export function f2Exists(): boolean {
+  return fs.existsSync(F2_PATH);
+}
+
+export function bbdownExists(): boolean {
+  return fs.existsSync(BBDOWN_PATH);
 }
 
 export { isWindows };

@@ -272,6 +272,11 @@ export const scans = {
       id,
     );
   },
+
+  /** Delete a scan and (via ON DELETE CASCADE) all of its videos. */
+  remove(id: string): void {
+    db.prepare(`DELETE FROM scans WHERE id=?`).run(id);
+  },
 };
 
 /* --------------------------------- videos ---------------------------------- */

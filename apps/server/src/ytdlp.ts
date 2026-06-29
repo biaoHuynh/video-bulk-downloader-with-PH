@@ -1,9 +1,10 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import readline from "node:readline";
 import fs from "node:fs";
 import type { CookieBrowser, CookieMode, Platform, Quality } from "@vbd/shared";
-import { FFMPEG_DIR, YTDLP_PATH, isWindows } from "./config.js";
+import { FFMPEG_DIR, YTDLP_PATH } from "./config.js";
 import { throttleArgs } from "./ratelimit.js";
+import { killTree, parseProgressLine, PROGRESS_PREFIX } from "./engines/shared.js";
 
 /** Cookie configuration extracted from a job. */
 export interface CookieConfig {
@@ -33,22 +34,6 @@ function jsRuntimeArgs(): string[] {
   const exe = process.execPath;
   if (/node(\.exe)?$/i.test(exe)) return ["--js-runtimes", `node:${exe}`];
   return ["--js-runtimes", "node"];
-}
-
-/** Kill a process and (on Windows) its child tree (ffmpeg, etc.). */
-function killTree(child: ChildProcessWithoutNullStreams): void {
-  if (child.pid == null) return;
-  if (isWindows) {
-    spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
-      windowsHide: true,
-    });
-  } else {
-    try {
-      process.kill(-child.pid, "SIGTERM");
-    } catch {
-      child.kill("SIGTERM");
-    }
-  }
 }
 
 /* -------------------------------- version ---------------------------------- */
@@ -235,7 +220,6 @@ export function scan(
 
 /* -------------------------------- download --------------------------------- */
 
-const PROGRESS_PREFIX = "vbdprog:";
 const PROGRESS_TEMPLATE =
   `download:${PROGRESS_PREFIX}%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s`;
 
@@ -252,20 +236,6 @@ export interface DownloadResult {
 export interface DownloadHandle {
   promise: Promise<DownloadResult>;
   cancel: () => void;
-}
-
-function parsePercent(s: string): number | null {
-  const m = s.match(/([\d.]+)\s*%/);
-  if (!m) return null;
-  const n = Number.parseFloat(m[1]!);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Normalise a progress field, mapping yt-dlp's "N/A"/"Unknown" placeholders to null. */
-function cleanField(s: string): string | null {
-  const t = s.trim();
-  if (!t || t === "N/A" || /unknown/i.test(t)) return null;
-  return t;
 }
 
 /**
@@ -336,12 +306,9 @@ export function download(opts: DownloadOptions, cb: DownloadCallbacks): Download
   const rl = readline.createInterface({ input: child.stdout });
   rl.on("line", (line) => {
     const trimmed = line.trim();
-    const idx = trimmed.indexOf(PROGRESS_PREFIX);
-    if (idx !== -1) {
-      const payload = trimmed.slice(idx + PROGRESS_PREFIX.length);
-      const [pctStr = "", speedStr = "", etaStr = ""] = payload.split("|");
-      const pct = parsePercent(pctStr);
-      cb.onProgress(pct ?? 0, cleanField(speedStr), cleanField(etaStr));
+    const prog = parseProgressLine(trimmed);
+    if (prog) {
+      cb.onProgress(prog.pct ?? 0, prog.speed, prog.eta);
       return;
     }
     // Lines that aren't progress and look like a path are the after_move:filepath print.

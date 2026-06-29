@@ -28,11 +28,18 @@ export function SignIn({ job }: { job: Job }) {
     setBusy(p);
     setError(null);
     try {
-      const path = await window.electronAPI!.login(p);
-      if (path) {
+      const { path, loggedIn } = await window.electronAPI!.login(p);
+      if (path && loggedIn) {
+        // Real session cookie captured → switch to file mode and show ✓.
         await updateJob(job.id, { cookieMode: "file", cookieFilePath: path });
         qc.invalidateQueries({ queryKey: ["workspace"] });
         setDone(p);
+      } else if (path) {
+        // Got cookies but no logged-in session → still use them (helps anti-bot)
+        // but don't claim success: the user likely closed before finishing login.
+        await updateJob(job.id, { cookieMode: "file", cookieFilePath: path });
+        qc.invalidateQueries({ queryKey: ["workspace"] });
+        setError(`No signed-in session for ${platformLabel(p)} — finish logging in, then close the window.`);
       } else {
         setError(`No cookies captured for ${platformLabel(p)} (did you log in?)`);
       }

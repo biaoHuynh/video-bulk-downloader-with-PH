@@ -6,6 +6,7 @@
   "main": "electron/dist/main.cjs",
   "scripts": {
     "setup": "node scripts/fetch-binaries.mjs",
+    "build:f2": "node scripts/build-f2.mjs",
     "dev": "pnpm --parallel --filter @vbd/server --filter @vbd/web dev",
     "dev:server": "pnpm --filter @vbd/server dev",
     "dev:web": "pnpm --filter @vbd/web dev",
