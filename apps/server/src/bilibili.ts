@@ -105,7 +105,9 @@ async function cookiesFromBrowser(
 }
 
 /** Build a Cookie header: a freshly-primed buvid3 plus any login cookies the job provides. */
-async function buildCookieHeader(cookies: CookieConfig): Promise<string> {
+async function buildCookieHeader(
+  cookies: CookieConfig,
+): Promise<{ header: string; hasLogin: boolean }> {
   const parts: string[] = [];
   try {
     const r = await fetch("https://www.bilibili.com/", { headers: { "User-Agent": UA } });
@@ -138,7 +140,8 @@ async function buildCookieHeader(cookies: CookieConfig): Promise<string> {
     }
     parts.push(c);
   }
-  return parts.join("; ");
+  const header = parts.join("; ");
+  return { header, hasLogin: /SESSDATA=/i.test(header) };
 }
 
 /**
@@ -157,12 +160,27 @@ export function enumerateBilibiliSpace(
   const controller = new AbortController();
 
   const promise = (async (): Promise<{ count: number }> => {
-    const cookieHeader = await buildCookieHeader(cookies);
+    const { header: cookieHeader, hasLogin } = await buildCookieHeader(cookies);
     const headers: Record<string, string> = {
       "User-Agent": UA,
       Referer: `https://space.bilibili.com/${mid}/video`,
     };
     if (cookieHeader) headers.Cookie = cookieHeader;
+
+    // When Bilibili blocks us, the right advice depends on whether we sent a login.
+    const blocked = (detail: string): Error =>
+      hasLogin
+        ? // real rate-limit despite login → block error → scanner sets a cooldown
+          new Error(
+            `Bilibili rate-limited this request (${detail}) even though you're signed in — ` +
+              `this IP is flagged. Wait 15–60 min or switch network/VPN.`,
+          )
+        : // no login was sent → actionable, and intentionally free of block-keywords
+          // (e.g. -799) so it doesn't trigger a cooldown — fix cookies and retry now.
+          new Error(
+            "Bilibili needs login to list this channel — no SESSDATA cookie was sent. " +
+              "Click “Sign in: Bilibili”, finish logging in, close that window, then scan again.",
+          );
 
     const max = limit && limit > 0 ? limit : SAFETY_MAX;
     let pn = 1;
@@ -175,11 +193,11 @@ export function enumerateBilibiliSpace(
       const res = await fetch(url, { headers, signal: controller.signal });
       const ct = res.headers.get("content-type") ?? "";
       if (!ct.includes("json")) {
-        throw new Error(`Bilibili risk-control (HTTP ${res.status} ${res.statusText}; non-JSON challenge)`);
+        throw blocked(`HTTP ${res.status} non-JSON challenge`);
       }
       const j: any = await res.json();
       if (j.code !== 0) {
-        throw new Error(`Bilibili API error ${j.code}: ${j.message || "请求被拦截"}`);
+        throw blocked(`code ${j.code}: ${j.message || "请求被拦截"}`);
       }
       total = j.data?.page?.count ?? 0;
       const vlist: any[] = j.data?.list?.vlist ?? [];

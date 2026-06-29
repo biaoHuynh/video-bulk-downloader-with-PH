@@ -87,7 +87,7 @@ async function runScan(
       const until = noteBlock(scanRow.platform);
       const tip =
         scanRow.platform === "bilibili"
-          ? "Log in to bilibili then set Cookies = From browser, or switch network/VPN."
+          ? "If not signed in, use Sign in; if already signed in, this IP is flagged — wait 15–60 min or switch network/VPN."
           : "Set Cookies = From browser, or switch network/VPN.";
       message =
         `${platformLabel(scanRow.platform)} blocked this request (rate-limit). ` +

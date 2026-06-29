@@ -106,6 +106,11 @@ export function noteSuccess(platform: Platform): void {
   }
 }
 
+/** Clear cooldowns (e.g. after the user changes cookies / signs in — worth retrying). */
+export function clearCooldowns(): void {
+  cooldowns.clear();
+}
+
 /** Milliseconds remaining in a platform's cooldown, or 0 if none. */
 export function cooldownRemainingMs(platform: Platform): number {
   const cur = cooldowns.get(platform);

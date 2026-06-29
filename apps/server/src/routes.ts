@@ -8,7 +8,12 @@ import {
   type ScanInput,
   type UpdateJobInput,
 } from "@vbd/shared";
-import { activeCooldowns, cooldownRemainingMs, formatRemaining } from "./ratelimit.js";
+import {
+  activeCooldowns,
+  clearCooldowns,
+  cooldownRemainingMs,
+  formatRemaining,
+} from "./ratelimit.js";
 import { jobs, scans, videos } from "./repo.js";
 import { startScan } from "./scanner.js";
 import { cancelDownload, enqueueDownload } from "./queue.js";
@@ -63,6 +68,14 @@ export function registerRoutes(app: FastifyInstance): void {
     const body = (req.body ?? {}) as UpdateJobInput;
     const job = jobs.update(id, body);
     if (!job) return reply.code(404).send({ error: "Job not found" });
+    // New auth (signed in / changed cookies) → give blocked platforms another chance.
+    if (
+      body.cookieMode !== undefined ||
+      body.cookieFilePath !== undefined ||
+      body.cookieBrowser !== undefined
+    ) {
+      clearCooldowns();
+    }
     return job;
   });
 

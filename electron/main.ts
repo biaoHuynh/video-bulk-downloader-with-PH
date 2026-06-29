@@ -62,13 +62,14 @@ function loginAndCaptureCookies(platform: Platform): Promise<string | null> {
     win.on("closed", async () => {
       try {
         const ses = session.defaultSession;
-        const all: Cookie[] = [];
-        for (const domain of COOKIE_DOMAINS[platform]) {
-          all.push(...(await ses.cookies.get({ domain })));
-        }
-        if (all.length === 0) return resolve(null);
+        const bases = COOKIE_DOMAINS[platform].map((d) => d.replace(/^\./, ""));
+        // Grab ALL cookies and keep any whose domain matches — more robust than an
+        // exact domain filter (covers passport./api./www. subdomains, httpOnly, etc.).
+        const all = await ses.cookies.get({});
+        const matched = all.filter((c) => bases.some((b) => (c.domain ?? "").includes(b)));
+        if (matched.length === 0) return resolve(null);
         const file = path.join(app.getPath("userData"), `cookies-${platform}.txt`);
-        fs.writeFileSync(file, toNetscape(all), "utf8");
+        fs.writeFileSync(file, toNetscape(matched), "utf8");
         resolve(file);
       } catch {
         resolve(null);
