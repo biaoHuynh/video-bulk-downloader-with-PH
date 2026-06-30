@@ -99,14 +99,28 @@ a native window. Its main advantage is embedded login: a sign-in window captures
 cookies directly from the app's own browser session, which avoids the locked cookie-database
 problem on Windows.
 
+### Build the installer
+
+`pnpm dist:app` produces a Windows installer end to end — it fetches the binaries, builds the
+optional Douyin engine, sets the correct native-module ABI, then packages everything. Use this
+to ship a standalone app that installs and launches from the Start menu, with no terminal:
+
 ```bash
-pnpm app:rebuild    # rebuild better-sqlite3 for Electron's ABI (first time only)
-pnpm app            # build and launch the desktop app
-pnpm dist           # build the Windows installer into release/
+pnpm dist:app              # full build -> release/<product>-<version>-setup.exe
+pnpm dist:app --skip-f2    # skip the optional Douyin (f2) engine
 ```
 
-Native module note: `better-sqlite3` is compiled per runtime. Switch its ABI with
-`pnpm app:rebuild` (Electron) and `pnpm rebuild:node` (web).
+For day-to-day work you can still run the lower-level scripts directly:
+
+```bash
+pnpm app:rebuild    # rebuild better-sqlite3 for Electron's ABI (first time only)
+pnpm app            # build and launch the desktop app (no installer)
+pnpm dist           # package the installer only (assumes binaries + ABI are ready)
+```
+
+Native module note: `better-sqlite3` is compiled per runtime. `pnpm dist:app` and
+`pnpm app:rebuild` set the Electron ABI; switch back for web development with
+`pnpm rebuild:node`.
 
 ## Usage
 

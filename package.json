@@ -16,6 +16,7 @@
     "app:rebuild": "electron-rebuild -f -o better-sqlite3",
     "app": "pnpm app:build && electron .",
     "dist": "pnpm app:build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "dist:app": "node scripts/build-app.mjs",
     "rebuild:node": "pnpm rebuild better-sqlite3"
   },
   "engines": {
